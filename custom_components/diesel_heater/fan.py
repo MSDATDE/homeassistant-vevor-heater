@@ -1,12 +1,13 @@
 """Fan platform for Vevor Diesel Heater."""
 from __future__ import annotations
 
+PARALLEL_UPDATES = 1
+
 import logging
 import math
 from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.percentage import (
@@ -14,11 +15,11 @@ from homeassistant.util.percentage import (
     percentage_to_ordered_list_item,
 )
 
+from . import VevorHeaterConfigEntry
 from .const import (
     DOMAIN,
     MAX_LEVEL,
     MIN_LEVEL,
-    RUNNING_MODE_MANUAL,
     RUNNING_MODE_LEVEL,
 )
 from .coordinator import VevorHeaterCoordinator
@@ -31,11 +32,11 @@ ORDERED_LEVELS = [str(level) for level in range(MIN_LEVEL, MAX_LEVEL + 1)]
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: VevorHeaterConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Vevor Heater fan from config entry."""
-    coordinator: VevorHeaterCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     async_add_entities([VevorHeaterFan(coordinator)])
 
 
@@ -45,7 +46,11 @@ class VevorHeaterFan(FanEntity):
     _attr_has_entity_name = True
     _attr_name = "Heater Level"
     _attr_icon = "mdi:fire"
-    _attr_supported_features = FanEntityFeature.SET_SPEED
+    _attr_supported_features = (
+        FanEntityFeature.SET_SPEED
+        | FanEntityFeature.TURN_ON
+        | FanEntityFeature.TURN_OFF
+    )
     _attr_speed_count = MAX_LEVEL
 
     def __init__(self, coordinator: VevorHeaterCoordinator) -> None:
@@ -62,12 +67,13 @@ class VevorHeaterFan(FanEntity):
     @property
     def available(self) -> bool:
         """Return if entity is available."""
-        # Only available when connected and in Manual or Level mode
+        # Only available when connected and in Level mode
+        # Manual mode only allows Start/Stop, not level control
         if not self.coordinator.data.get("connected", False):
             return False
 
         running_mode = self.coordinator.data.get("running_mode")
-        return running_mode in [RUNNING_MODE_MANUAL, RUNNING_MODE_LEVEL]
+        return running_mode == RUNNING_MODE_LEVEL
 
     @property
     def is_on(self) -> bool:
